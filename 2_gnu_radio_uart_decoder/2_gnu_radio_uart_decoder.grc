@@ -1,0 +1,165 @@
+options:
+  parameters:
+    author: ''
+    catch_exceptions: 'True'
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: ''
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: untitled
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: UART Bit-stream Decoder
+    window_size: (1000,1000)
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [304, 28.0]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: samples_per_bit
+  id: variable
+  parameters:
+    comment: ''
+    value: '10'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [528, 32.0]
+    rotation: 0
+    state: enabled
+- name: blocks_file_source_0
+  id: blocks_file_source
+  parameters:
+    affinity: ''
+    alias: ''
+    begin_tag: pmt.PMT_NIL
+    comment: ''
+    file: 10-samples-per-bit.bin
+    length: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    offset: '0'
+    repeat: 'False'
+    type: byte
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [56, 196.0]
+    rotation: 0
+    state: true
+- name: blocks_null_sink_0
+  id: blocks_null_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    bus_structure_sink: '[[0,],]'
+    comment: ''
+    num_inputs: '1'
+    type: byte
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [696, 240.0]
+    rotation: 0
+    state: true
+- name: epy_block_0
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"\nEmbedded Python Blocks:\n\nEach time this file is saved,\
+      \ GRC will instantiate the first class it finds\nto get ports and parameters\
+      \ of your block. The arguments to __init__  will\nbe the parameters. All of\
+      \ them are required to have default values!\n\"\"\"\n\nimport numpy as np\n\
+      from gnuradio import gr\n\n\nclass blk(gr.sync_block):  # other base classes\
+      \ are basic_block, decim_block, interp_block\n    \"\"\"Embedded Python Block\
+      \ example - a simple multiply const\"\"\"\n\n    def __init__(self, samples_per_bit=1):\
+      \  # only default arguments here\n        \"\"\"arguments to this function show\
+      \ up as parameters in GRC\"\"\"\n        gr.sync_block.__init__(\n         \
+      \   self,\n            name='Decode UART Bitstream',   # will show up in GRC\n\
+      \            in_sig=[np.byte],\n            out_sig=[np.byte]\n        )\n \
+      \       # if an attribute with the same name as a parameter is found,\n    \
+      \    # a callback is registered (properties work, too).\n        self.samples_per_bit\
+      \ = samples_per_bit\n        self.sample_index = 0\n        self.sample_sum\
+      \ = 0\n        \n        self.uart_start_bit_detected = False\n        self.uart_data_byte\
+      \ = 0\n        self.uart_data_bit_index = 0\n\n        self.last_bit_value =\
+      \ 0\n\n    def work(self, input_items, output_items):\n    \n        \"\"\"\n\
+      \        | START | D0 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | STOP |\n        \"\
+      \"\"\n\n        # Get input bytes    \n        # Iterarte over stream of bytes\
+      \ in input_items[0]\n        for byte_value in input_items[0]:\n\n         \
+      \   # Iterate over the bits of current byte value\n            for bit_index\
+      \ in range(8):\n                # extract the bit values from the MSB (left)\
+      \ side of the byte\n                bit_value = (byte_value >> (7 - bit_index))\
+      \ & 0x01\n\n                # Sum of values of total samples for current bit\n\
+      \                self.sample_sum += bit_value\n                # Index of samples\
+      \ for current bit\n                self.sample_index += 1\n\n              \
+      \  if self.sample_index >= self.samples_per_bit:\n                    # Calculate\
+      \ the current bit value according to the sum of samples and the 1/0 threshold\n\
+      \                    if self.sample_sum >= (self.samples_per_bit // 2 + 1):\n\
+      \                        current_bit_value = 1\n                    else:\n\
+      \                        current_bit_value = 0\n\n                    self.sample_index\
+      \ = 0\n                    self.sample_sum = 0\n\n                    if not\
+      \ self.uart_start_bit_detected:\n                        # Check the START bit\
+      \ in the falling edge of signal\n                        if current_bit_value\
+      \ == 0 and self.last_bit_value == 1:\n                            self.uart_start_bit_detected\
+      \ = True\n                            self.uart_data_bit_index = 0\n       \
+      \                     self.uart_data_byte = 0\n                    else:\n \
+      \                       # Get bits of the DATA byte\n                      \
+      \  if self.uart_data_bit_index < 8:\n                            self.uart_data_byte\
+      \ = self.uart_data_byte | (\n                                current_bit_value\
+      \ << self.uart_data_bit_index\n                            )\n             \
+      \               self.uart_data_bit_index += 1\n                        else:\n\
+      \                            # Check the STOP bit\n                        \
+      \    # if STOP bit is not equal to '1' this is a corrupt frame\n           \
+      \                 if current_bit_value == 0:\n                             \
+      \   print(\"corrupt byte!\")\n                            else:\n          \
+      \                      # UART frame is healthy\n                           \
+      \     # Output the data byte\n                                output_items[0][:]\
+      \ = self.uart_data_byte\n                                print(self.uart_data_byte)\n\
+      \n                            self.uart_start_bit_detected = False\n\n     \
+      \               self.last_bit_value = current_bit_value\n                  \
+      \          \n        return len(output_items[0])\n"
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samples_per_bit: samples_per_bit
+  states:
+    _io_cache: ('Decode UART Bitstream', 'blk', [('samples_per_bit', '1')], [('0',
+      'byte', 1)], [('0', 'byte', 1)], 'Embedded Python Block example - a simple multiply
+      const', ['samples_per_bit'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [376, 232.0]
+    rotation: 0
+    state: enabled
+
+connections:
+- [blocks_file_source_0, '0', epy_block_0, '0']
+- [epy_block_0, '0', blocks_null_sink_0, '0']
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.7.0

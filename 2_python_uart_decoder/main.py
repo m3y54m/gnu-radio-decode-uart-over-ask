@@ -14,14 +14,13 @@ FILE_PATH = os.path.join(CURRENT_DIR, BINARY_FILE_NAME)
 
 """
 | START | D0 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | STOP |
-
 """
 try:
     with open(FILE_PATH, "rb") as file:
+        uart_start_bit_detected = False
+        uart_data_byte = 0
+        uart_data_bit_index = 0
 
-        is_start_bit_detected = False
-        data_bit_index = 0
-        current_byte = 0
         last_bit_value = 0
 
         sample_index = 0
@@ -44,7 +43,7 @@ try:
 
                 # Sum of values of total samples for current bit
                 sample_sum += bit_value
-                # Index of samples for current bit 
+                # Index of samples for current bit
                 sample_index += 1
 
                 if sample_index >= SAMPLES_PER_BIT:
@@ -57,28 +56,30 @@ try:
                     sample_index = 0
                     sample_sum = 0
 
-                    if not is_start_bit_detected:
+                    if not uart_start_bit_detected:
                         # Check the START bit in the falling edge of signal
                         if current_bit_value == 0 and last_bit_value == 1:
-                            is_start_bit_detected = True
-                            data_bit_index = 0
-                            current_byte = 0
+                            uart_start_bit_detected = True
+                            uart_data_bit_index = 0
+                            uart_data_byte = 0
                     else:
-                        if data_bit_index < 8:
-                            current_byte = current_byte | (
-                                int(current_bit_value) << data_bit_index
+                        # Get bits of the DATA byte
+                        if uart_data_bit_index < 8:
+                            uart_data_byte = uart_data_byte | (
+                                current_bit_value << uart_data_bit_index
                             )
-                            data_bit_index += 1
+                            uart_data_bit_index += 1
                         else:
                             # Check the STOP bit
                             # if STOP bit is not equal to '1' this is a corrupt frame
                             if current_bit_value == 0:
-                                current_byte = None
+                                print("corrupt byte!")
+                            else:
+                                # UART frame is healthy
+                                # Output the data byte
+                                print(uart_data_byte)
 
-                            # UART frame is healthy
-                            print(current_byte)
-
-                            is_start_bit_detected = False
+                            uart_start_bit_detected = False
 
                     last_bit_value = current_bit_value
 except IOError:
