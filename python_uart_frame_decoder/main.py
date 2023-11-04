@@ -1,7 +1,11 @@
+import numpy as np
 import os
 
+# In order to reduce effect of noise in the samples data,
+# each bit of the UART bit-stream may be sampled more than once
 SAMPLES_PER_BIT = 10
 
+# The UART bit-stream samples
 BINARY_FILE_NAME = "10-samples-per-bit.bin"
 # Get the path of the Python source file
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,62 +18,68 @@ FILE_PATH = os.path.join(CURRENT_DIR, BINARY_FILE_NAME)
 """
 try:
     with open(FILE_PATH, "rb") as file:
+
         is_start_bit_detected = False
         data_bit_index = 0
         current_byte = 0
-        last_bit = "0"
+        last_bit_value = 0
 
         sample_index = 0
-        sample_bits_sum = 0
+        sample_sum = 0
 
         while True:
             # Read 1 byte from the file
-            byte_value = file.read(1)
+            read_byte = file.read(1)
 
-            if not byte_value:
+            if not read_byte:
                 break
 
-            binary_string = bin(int.from_bytes(byte_value, byteorder="big"))[2:].zfill(
-                8
-            )
+            # convert file byte to numpy byte
+            byte_value = np.uint8(read_byte[0])
 
-            for i, bit_char in enumerate(binary_string):
-                
-                sample_bits_sum += int(bit_char)
+            # Iterate over the bits of current byte value
+            for bit_index in range(8):
+                # extract the bit values from the MSB (left) side of the byte
+                bit_value = (byte_value >> (7 - bit_index)) & 0x01
+
+                # Sum of values of total samples for current bit
+                sample_sum += bit_value
+                # Index of samples for current bit 
                 sample_index += 1
-                
+
                 if sample_index >= SAMPLES_PER_BIT:
-                    
-                    if sample_bits_sum >= (SAMPLES_PER_BIT // 2 + 1):
-                        current_bit = "1"
+                    # Calculate the current bit value according to the sum of samples and the threshold
+                    if sample_sum >= (SAMPLES_PER_BIT // 2 + 1):
+                        current_bit_value = 1
                     else:
-                        current_bit = "0"
+                        current_bit_value = 0
 
                     sample_index = 0
-                    sample_bits_sum = 0
+                    sample_sum = 0
 
                     if not is_start_bit_detected:
-                        if current_bit == "0" and last_bit == "1":
+                        # Check the START bit in the falling edge of signal
+                        if current_bit_value == 0 and last_bit_value == 1:
                             is_start_bit_detected = True
                             data_bit_index = 0
                             current_byte = 0
-                            last_bit = current_bit
-                        else:
-                            last_bit = current_bit
-                            continue
                     else:
-                        last_bit = current_bit
                         if data_bit_index < 8:
                             current_byte = current_byte | (
-                                int(current_bit) << data_bit_index
+                                int(current_bit_value) << data_bit_index
                             )
                             data_bit_index += 1
                         else:
-                            is_start_bit_detected = False
-
-                            if current_bit == "0":
+                            # Check the STOP bit
+                            # if STOP bit is not equal to '1' this is a corrupt frame
+                            if current_bit_value == 0:
                                 current_byte = None
 
+                            # UART frame is healthy
                             print(current_byte)
+
+                            is_start_bit_detected = False
+
+                    last_bit_value = current_bit_value
 except IOError:
     print("Error opening file.")
